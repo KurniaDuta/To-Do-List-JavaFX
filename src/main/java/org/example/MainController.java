@@ -1,42 +1,64 @@
 package org.example;
 
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ListView;
-import javafx.scene.control.Button;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
 import org.example.core.Aktivitas;
 import org.example.core.ToDoListModel;
 
 import java.sql.SQLException;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Date;
 
-public class MainController implements ChangeListener<Aktivitas> {
+public class MainController {
     @FXML
     private Button btnTambah;
     @FXML
     private TextField txtKegiatan;
     @FXML
-    private ListView<String> lstDaftarKegiatan;
+    private DatePicker dpDeadline;
+    @FXML
+    private TableView<Aktivitas> tblDaftarKegiatan;
+    @FXML
+    private TableColumn<Aktivitas, String> colNama;
+    @FXML
+    private TableColumn<Aktivitas, Date> colWaktuDitambahkan;
+    @FXML
+    private TableColumn<Aktivitas, Date> colDeadline;
+    @FXML
+    private TableColumn<Aktivitas, Date> colWaktuSelesai;
+    @FXML
+    private TableColumn<Aktivitas, Boolean> colStatus;
 
     private ToDoListModel model;
+    private ObservableList<Aktivitas> aktivitasList;
 
     @FXML
     public void initialize() {
         model = new ToDoListModel();
+        aktivitasList = FXCollections.observableArrayList();
+        setupTableColumns();
         loadAktivitas();
+    }
+
+    private void setupTableColumns() {
+        colNama.setCellValueFactory(new PropertyValueFactory<>("nama"));
+        colWaktuDitambahkan.setCellValueFactory(new PropertyValueFactory<>("waktuDitambahkan"));
+        colDeadline.setCellValueFactory(new PropertyValueFactory<>("deadline"));
+        colWaktuSelesai.setCellValueFactory(new PropertyValueFactory<>("waktuSelesai"));
+        colStatus.setCellValueFactory(new PropertyValueFactory<>("selesai"));
+
+        tblDaftarKegiatan.setItems(aktivitasList);
     }
 
     private void loadAktivitas() {
         try {
-            lstDaftarKegiatan.getItems().clear();
-            var aktivitas = model.getAllAktivitas();
-            for (int i = 0; i < aktivitas.size(); i++) {
-                String prefix = aktivitas.get(i).isSelesai() ? "✓ " : "";
-                lstDaftarKegiatan.getItems().add((i + 1) + ". " + prefix + aktivitas.get(i).getNama());
-            }
+            aktivitasList.clear();
+            aktivitasList.addAll(model.getAllAktivitas());
         } catch (SQLException e) {
             showError("Error loading aktivitas: " + e.getMessage());
         }
@@ -48,9 +70,17 @@ public class MainController implements ChangeListener<Aktivitas> {
         if (!kegiatan.isEmpty()) {
             try {
                 Aktivitas aktivitas = new Aktivitas(kegiatan);
+
+                LocalDate deadlineDate = dpDeadline.getValue();
+                if (deadlineDate != null) {
+                    Date deadline = Date.from(deadlineDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+                    aktivitas.setDeadline(deadline);
+                }
+
                 model.simpanAktivitas(aktivitas);
                 loadAktivitas();
                 this.txtKegiatan.clear();
+                this.dpDeadline.setValue(null);
             } catch (SQLException e) {
                 showError("Error saving aktivitas: " + e.getMessage());
             }
@@ -60,17 +90,12 @@ public class MainController implements ChangeListener<Aktivitas> {
     }
 
     public void onBtnTandaiSelesai_Action(ActionEvent actionEvent) {
-        int selectedIdx = lstDaftarKegiatan.getSelectionModel().getSelectedIndex();
+        Aktivitas selectedAktivitas = tblDaftarKegiatan.getSelectionModel().getSelectedItem();
 
-        if (selectedIdx != -1) {
+        if (selectedAktivitas != null) {
             try {
-                String selectedItem = lstDaftarKegiatan.getItems().get(selectedIdx);
-                String[] parts = selectedItem.split("\\. ", 2);
-                if (parts.length == 2) {
-                    String kegiatan = parts[1].replace("✓ ", "");
-                    model.updateAktivitasStatus(kegiatan, true);
-                    loadAktivitas();
-                }
+                model.updateAktivitasStatus(selectedAktivitas.getNama(), true);
+                loadAktivitas();
             } catch (SQLException e) {
                 showError("Error updating aktivitas: " + e.getMessage());
             }
@@ -80,17 +105,12 @@ public class MainController implements ChangeListener<Aktivitas> {
     }
 
     public void onBtnTandaiHapus_Action(ActionEvent actionEvent) {
-        int selectedIdx = lstDaftarKegiatan.getSelectionModel().getSelectedIndex();
+        Aktivitas selectedAktivitas = tblDaftarKegiatan.getSelectionModel().getSelectedItem();
 
-        if (selectedIdx != -1) {
+        if (selectedAktivitas != null) {
             try {
-                String selectedItem = lstDaftarKegiatan.getItems().get(selectedIdx);
-                String[] parts = selectedItem.split("\\. ", 2);
-                if (parts.length == 2) {
-                    String kegiatan = parts[1].replace("✓ ", "");
-                    model.deleteAktivitas(kegiatan);
-                    loadAktivitas();
-                }
+                model.deleteAktivitas(selectedAktivitas.getNama());
+                loadAktivitas();
             } catch (SQLException e) {
                 showError("Error deleting aktivitas: " + e.getMessage());
             }
@@ -109,12 +129,5 @@ public class MainController implements ChangeListener<Aktivitas> {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setContentText(message);
         alert.show();
-    }
-
-    @Override
-    public void changed(ObservableValue<? extends Aktivitas> observable, Aktivitas oldValue, Aktivitas newValue) {
-        if (newValue != null) {
-            this.txtKegiatan.setText(newValue.getNama());
-        }
     }
 }
